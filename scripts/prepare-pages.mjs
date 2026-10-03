@@ -1,0 +1,22 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const dir=path.resolve('dist-pages');
+const base=process.env.PAGES_BASE_PATH||'/sibateConecta/';
+if(!base.startsWith('/')||!base.endsWith('/')||base.includes('..'))throw Error('PAGES_BASE_PATH must be a relative root path ending in /');
+const manifest=JSON.parse(fs.readFileSync(path.join(dir,'manifest.webmanifest'),'utf8'));
+Object.assign(manifest,{id:base,start_url:base,scope:base,name:'SIBATÉ Conecta · Demo',short_name:'Sibaté Demo',description:'Demostración con datos de prueba en este dispositivo.'});
+manifest.icons=manifest.icons.map(icon=>({...icon,src:base+icon.src.replace(/^\//,'')}));
+fs.writeFileSync(path.join(dir,'manifest.webmanifest'),JSON.stringify(manifest,null,2));
+const files=[];
+function walk(folder){for(const entry of fs.readdirSync(folder,{withFileTypes:true})){const full=path.join(folder,entry.name);if(entry.isDirectory())walk(full);else if(!['sw.js','offline.html'].includes(entry.name))files.push(base+path.relative(dir,full).replaceAll('\\','/'));}}
+walk(dir);
+const prefix='sibate-pages-'+encodeURIComponent(base)+'-';
+const version=prefix+Date.now();
+fs.writeFileSync(path.join(dir,'sw.js'),`const CACHE=${JSON.stringify(version)},BASE=${JSON.stringify(base)},FILES=${JSON.stringify(files)};
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting())));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith(${JSON.stringify(prefix)})&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
+self.addEventListener('fetch',e=>{const r=e.request,u=new URL(r.url);if(r.method!=='GET'||u.origin!==self.location.origin||!u.pathname.startsWith(BASE))return;if(r.mode==='navigate'){e.respondWith(fetch(r).then(response=>response.ok?response:caches.match(BASE+'index.html')).catch(()=>caches.match(BASE+'index.html')));return;}e.respondWith(caches.match(r).then(cached=>cached||fetch(r)));});
+`);
+fs.writeFileSync(path.join(dir,'.nojekyll'),'');
+fs.rmSync(path.join(dir,'offline.html'),{force:true});
+console.log(`Pages demo ready: ${base}; ${files.length} cached assets; no backend or secrets.`);
