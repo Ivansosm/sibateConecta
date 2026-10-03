@@ -1,0 +1,36 @@
+name: Importar código completo
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Expandir entrega
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          root = Path.cwd().resolve()
+          with zipfile.ZipFile('SIBATE-Conecta-codigo.zip') as archive:
+              for entry in archive.infolist():
+                  target = (root / entry.filename).resolve()
+                  if not target.is_relative_to(root):
+                      raise ValueError('Ruta fuera del repositorio')
+                  if entry.filename.startswith('.github/'):
+                      continue
+                  archive.extract(entry, root)
+          PY
+      - name: Guardar código en main
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- . ':(exclude).github'
+          if git diff --cached --quiet; then
+            echo 'El código ya está actualizado.'
+          else
+            git commit -m 'Importar MVP completo SIBATE-Conecta'
+            git push origin HEAD:main
+          fi
